@@ -1,0 +1,67 @@
+#ERB RNAseq analysis workflow on internal RKI HPC
+#check your working directory
+pwd
+
+#check the conda version
+conda --version
+
+#for conda help
+docker --help
+
+#Initialize conda in the HPC script
+eval "$(conda shell.bash hook)"
+
+#!/usr/bin/bash
+#SBATCH --cpus-per-task 10
+#SBATCH --mem 200Gb
+#SBATCH --time 24:00:00
+
+source ~/.bashrc
+conda env list
+conda activate name_env
+srun --time 24:00:00 --cpus-per-task 10 --mem 200Gb --pty bash -i
+conda activate name_env
+
+#Run trimming and fastqc
+
+trim_galore \
+/folder1/folder2/filename1_1.fq.gz \
+/folder1/folder2/filename1_2.fq.gz \
+--fastqc \
+--output_dir /folder1/folder2/trimgalore_results/ \
+--phred33 \
+--paired \
+--length 20 \
+--quality 30 \
+--stringency 3 \
+--cores 8
+
+#Download files to make Kallisto index
+#The "Index" is a lookup table for the transcriptome, allowing it to be more easily searched by Kallisto. 
+#Make kallisto index
+
+kallisto index -i indexfilename.idx /folder1/folder2/referencegenome_rna.fna.gz
+
+#note standard k-mer length 31
+ 
+#Run kallisto
+#Always supply kallisto one set of files at a time!
+
+mkdir -p kallisto_out
+
+#kallisto_out file names:
+
+kallisto quant \
+-i /folder1/folder2/indexfilename.idx \
+-o /folder1/folder2/kallisto_out/trimmedfile1/ \
+--verbose --threads=8 --gtf \
+/folder1/folder2/referencegenome_genomic.gtf.gz \
+/folder1/folder2/trimgalore_results/filename1trimmed_val_1.fq.gz \
+/folder1/folder2/trimgalore_results/filename1trimmed_val_2.fq.gz
+
+cd kallisto_out
+
+#check your files are in this directory
+ls
+
+#Transfer the abundance.tsv files and proceed with RStudio
