@@ -1,0 +1,24 @@
+#Creating size-matched bubble charts with ggplot2
+#Before you begin, go through your DEG list and prepare a small table summarizing the numbers of upregulated and downregulated DEGs for each treatment/infection. You will need this information to plug in as a dataframe (see first two commands below).
+
+#Load the ggplot2 package
+library(ggplot2)
+
+#Create the dataframe based on how many treatment groups you have for up and down DEGs.
+x <- c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18)
+y <- c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18)
+
+#Here you give the numbers of DEGs. Use the small table summary you prepared at the start.
+size <- c(114, 510, 64, 58, 124, 7, 262, 534, 127, 133, 77, 25, 7, 382, 10, 6, 56, 33)
+
+#Name your groups
+group <- c("MARV1up", "SUDV1up", "shared1up", "MARV1down", "SUDV1down", "shared1down",
+           "MARV2up", "SUDV2up", "shared2up", "MARV2down", "SUDV2down", "shared2down",
+           "MARV3up", "SUDV3up", "shared3up", "MARV3down", "SUDV3down", "shared3down")
+df <- data.frame(x = x, y = y, size = size, group = group)
+df
+
+ggplot(df, aes(x = x, y = y, size = size)) +
+  geom_point(color = "coral4") +
+  scale_size(name = "Size", range = c(3, 16)) +
+  geom_text(label = group, nudge_x = 5, color = "black")
