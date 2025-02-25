@@ -1,0 +1,125 @@
+#set directory to location of TSV values----
+
+getwd()
+setwd("C:/Users/folder1/folder2")
+files = list.files()
+
+#reorder files
+
+files = files[c(1,2,3,4,5,6)]
+list.files()
+all(file.exists(files))
+
+#use these to set sample names in order 
+
+samples=c("mock1", "mock2", "mock3", "treatment1", "treatment2", "treatment3")
+
+#open packages
+
+library(tximport)
+library(readr)
+library(EnsDb.Hsapiens.v86)
+library(DESeq2)
+library(apeglm)
+library("BiocParallel")
+register(SnowParam(4))
+library("pheatmap")
+library("tidyverse")
+library(edgeR)
+library(RColorBrewer)
+
+# Load the GTF/GFF file gtf_file
+
+library(rtracklayer)
+gtf_file <- "C:/Users/folder1/folder2/referencegenome_genomic.gtf"
+gtf <- import(gtf_file)
+
+# Extract transcript-to-gene mappings
+
+#tx2gene <- gtf[gtf$type == "transcript"]: This line of code creates a new data frame, tx2gene, which is a subset of the gtf data frame, containing only the rows where the type column is equal to "transcript". In the context of a GTF file, a "transcript" generally refers to the mRNA sequence that is transcribed from a gene.
+
+#tx2gene <- data.frame(transcript_id = tx2gene$transcript_id, gene_id = tx2gene$gene_id): Here, tx2gene is being overwritten as a new data frame with only two columns - transcript_id and gene_id from the original tx2gene data frame. transcript_id corresponds to the unique identifiers of the transcripts, and gene_id corresponds to the unique identifiers of the genes.
+
+tx2gene <- gtf[gtf$type == "transcript"]
+tx2gene <- data.frame(transcript_id = tx2gene$transcript_id, gene_id = tx2gene$gene_id)
+
+#import transcript abundance data # removed "ignoreTxVersion = TRUE" which led to an error in annotation, in this case, there are multiple versions for each transcript.
+
+txi = tximport(files, type = "kallisto", tx2gene = tx2gene)
+
+#set up metadata----
+
+cell_type = as.factor(c(rep("mock",3), rep("treatment",3)))
+cell_type = data.frame(cell_type)
+
+#add metadata columns where a given cell type has a 1 and all other cell types have a 0
+
+#Here, two cell types (or comparison groups) are defined, mac_control and dend_control. 
+
+comparisons = c("mock", "treatment")
+
+#A data frame is created, meta_data, with two columns: sample and cell_type. It is assumed that samples and cell_type are already defined elsewhere in your code.
+
+meta_data = data.frame(sample = samples, cell_type = cell_type)
+
+meta_data[comparisons] = 0 #[] is similar to $ to pick columns
+for (i in 1:length(comparisons)){
+  meta_data[which(meta_data$cell_type==comparisons[i]),comparisons[i]]=1
+}
+
+#meta_data[comparisons]=lapply(meta_data[comparisons], factor): This line transforms the mac_control and dend_control columns from numerical (integer) to categorical (factor) data. The lapply function applies the factor function to each column specified by comparisons.
+
+meta_data[comparisons]=lapply(meta_data[comparisons], factor)
+meta_data
+
+#general dds----
+dds <- DESeqDataSetFromTximport(txi,
+                                colData = meta_data,
+                                design = ~ cell_type)
+as.data.frame(colData(dds))
+
+dds<- DESeq(dds)
+class(dds)
+
+rld<-rlog(dds)
+
+#Heatmap of sample-to-sample distance to check sample-to-sample variability.
+
+library("RColorBrewer")
+sampleDists <- dist(t(assay(rld)))
+
+sampleDistMatrix <- as.matrix(sampleDists)
+
+rownames(sampleDistMatrix) <- paste(rld$sample, sep="-")
+
+colnames(sampleDistMatrix) <- paste(rld$sample, sep="-")
+
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+
+pheatmap(sampleDistMatrix,
+         clustering_distance_rows=sampleDists,
+         clustering_distance_cols=sampleDists,
+         col=colors)
+
+#Run PCA analysis using the PCA function provided by DESeq2 - short and easy version
+
+head(rld)
+
+write.csv(as.data.frame(assay(rld)), file="DESEQ2_filename_rld.csv" )
+
+#Choose the top 500 most highly expressed genes for building the PCA plot.
+topVarGenes <- head( order( rowVars( assay(rld) ), decreasing=TRUE ), 500)
+top500Counts<-assay(rld)[topVarGenes,]
+write.csv(top500Counts, file="top500counts.rld.csv", quote=FALSE)
+
+ddsColl <- collapseReplicates(dds, dds$cell_type, renameCols=FALSE)
+ddsColl
+
+colData(ddsColl)
+ddsColl <- ddsColl[,order(ddsColl$cell_type)]
+rldColl<-rlog(ddsColl)
+
+DESeq2::plotPCA(rldColl, intgroup = c("cell_type"), ntop=500)
+
+DESeq2::plotPCA(rld, intgroup = c("cell_type"), ntop=500) +
+  geom_text(aes(label=dds$sample), nudge_y = 3.0, nudge_x = -4.0)
